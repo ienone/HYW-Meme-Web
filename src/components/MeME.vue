@@ -87,7 +87,7 @@ const transformStyle = computed(() => ({
     transform: `rotate(${rotate.value}deg) scale(${scale.value})`
 }));
 
-const setItemRef = (el: Element | null, idx: number) => {
+const setItemRef = (el: any , idx: number) => {
     if (el) itemRefs.value[idx] = el as HTMLImageElement;
 };
 
@@ -110,8 +110,7 @@ const calcCenterStyle = (target: HTMLImageElement) => {
     const nw = target.naturalWidth;
     const nh = target.naturalHeight;
 
-    // Calculate scale to fit within screen, but don't scale UP beyond 1.0 (natural size)
-    // This ensures the image is shown at its "own size" unless it's too big for the screen
+    // 默认放大到表情包原始大小，除非表情包大小超出屏幕范围
     const scale = Math.min(1, (vw - padding) / nw, (vh - padding) / nh);
 
     const targetW = nw * scale;
@@ -225,6 +224,7 @@ const rotateRight = () => rotate.value += 90;
 const downloadCurrent = () => {
     if (activeIndex.value === null) return;
     const url = imageList[activeIndex.value];
+    if (!url) return
     const a = document.createElement('a');
     a.href = url;
     // 尝试从URL获取文件名，如果失败则使用默认名
