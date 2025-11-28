@@ -95,6 +95,10 @@ const touchStartY = ref(0);
 const touchDeltaX = ref(0);
 const isSwiping = ref(false);
 
+// Swipe detection thresholds
+const SWIPE_DETECT_THRESHOLD = 10; // Minimum movement to detect swipe direction
+const SWIPE_TRIGGER_THRESHOLD = 50; // Minimum distance to trigger image switch
+
 const transformStyle = computed(() => ({
     transform: `rotate(${rotate.value}deg) scale(${scale.value})`
 }));
@@ -130,7 +134,7 @@ const onTouchMove = (e: TouchEvent) => {
     const deltaY = touch.clientY - touchStartY.value;
     
     // Only consider horizontal swipe if horizontal movement is greater
-    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > SWIPE_DETECT_THRESHOLD) {
         isSwiping.value = true;
         touchDeltaX.value = deltaX;
         e.preventDefault(); // Prevent scrolling when swiping
@@ -143,12 +147,10 @@ const onTouchEnd = () => {
         return;
     }
     
-    const threshold = 50; // Minimum swipe distance
-    
-    if (touchDeltaX.value > threshold && activeIndex.value > 0) {
+    if (touchDeltaX.value > SWIPE_TRIGGER_THRESHOLD && activeIndex.value > 0) {
         // Swipe right -> previous image
         switchImage(activeIndex.value - 1);
-    } else if (touchDeltaX.value < -threshold && activeIndex.value < imageList.length - 1) {
+    } else if (touchDeltaX.value < -SWIPE_TRIGGER_THRESHOLD && activeIndex.value < imageList.length - 1) {
         // Swipe left -> next image
         switchImage(activeIndex.value + 1);
     }
