@@ -12,8 +12,10 @@
                             :src="img"
                             alt="点击放大"
                             loading="lazy"
+                            decoding="async"
                             :ref="(el) => setItemRef(el, idx)"
                             @click="openLightbox(idx)"
+                            @load="onImageLoad($event, idx)"
                             style="cursor: pointer;"
                             :style="{ opacity: activeIndex === idx ? 0 : 1 }"
                     >
@@ -23,7 +25,11 @@
     </div>
 
     <Teleport to="body">
-        <div v-if="activeIndex !== null" class="lightbox-container">
+        <div v-if="activeIndex !== null" class="lightbox-container"
+            @touchstart="onTouchStart"
+            @touchmove="onTouchMove"
+            @touchend="onTouchEnd"
+        >
             <div 
                 class="lightbox-mask"
                 :class="{ visible: maskVisible }"
@@ -38,15 +44,14 @@
                 alt="Full screen"
             />
 
-            <!-- Navigation -->
-            <!-- 图标重绘 -->
-            <button v-if="activeIndex > 0" class="nav-btn prev" @click.stop="switchImage(activeIndex - 1)">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- Navigation - 优化手机端可见性和触摸区域 -->
+            <button v-if="activeIndex > 0" class="nav-btn prev" @click.stop="switchImage(activeIndex - 1)" aria-label="上一张">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="15 18 9 12 15 6" />
                 </svg>
             </button>
-            <button v-if="activeIndex < imageList.length - 1" class="nav-btn next" @click.stop="switchImage(activeIndex + 1)">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <button v-if="activeIndex < imageList.length - 1" class="nav-btn next" @click.stop="switchImage(activeIndex + 1)" aria-label="下一张">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="9 18 15 12 9 6" />
                 </svg>
             </button> 
@@ -78,10 +83,17 @@ const activeIndex = ref<number | null>(null);
 const maskVisible = ref(false);
 const imgStyle = ref<Record<string, string>>({});
 const itemRefs = ref<Record<number, HTMLImageElement | null>>({});
+const loadedImages = ref<Set<number>>(new Set());
 
 // Transform state
 const scale = ref(1);
 const rotate = ref(0);
+
+// Touch/Swipe state for mobile
+const touchStartX = ref(0);
+const touchStartY = ref(0);
+const touchDeltaX = ref(0);
+const isSwiping = ref(false);
 
 const transformStyle = computed(() => ({
     transform: `rotate(${rotate.value}deg) scale(${scale.value})`
@@ -89,6 +101,60 @@ const transformStyle = computed(() => ({
 
 const setItemRef = (el: any , idx: number) => {
     if (el) itemRefs.value[idx] = el as HTMLImageElement;
+};
+
+// Handle image load for preventing layout jitter
+const onImageLoad = (_event: Event, idx: number) => {
+    loadedImages.value.add(idx);
+};
+
+// Touch handlers for swipe navigation
+const onTouchStart = (e: TouchEvent) => {
+    // Don't interfere with toolbar touches
+    if ((e.target as HTMLElement).closest('.lightbox-toolbar')) return;
+    
+    const touch = e.touches[0];
+    if (!touch) return;
+    touchStartX.value = touch.clientX;
+    touchStartY.value = touch.clientY;
+    touchDeltaX.value = 0;
+    isSwiping.value = false;
+};
+
+const onTouchMove = (e: TouchEvent) => {
+    if ((e.target as HTMLElement).closest('.lightbox-toolbar')) return;
+    
+    const touch = e.touches[0];
+    if (!touch) return;
+    const deltaX = touch.clientX - touchStartX.value;
+    const deltaY = touch.clientY - touchStartY.value;
+    
+    // Only consider horizontal swipe if horizontal movement is greater
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
+        isSwiping.value = true;
+        touchDeltaX.value = deltaX;
+        e.preventDefault(); // Prevent scrolling when swiping
+    }
+};
+
+const onTouchEnd = () => {
+    if (!isSwiping.value || activeIndex.value === null) {
+        isSwiping.value = false;
+        return;
+    }
+    
+    const threshold = 50; // Minimum swipe distance
+    
+    if (touchDeltaX.value > threshold && activeIndex.value > 0) {
+        // Swipe right -> previous image
+        switchImage(activeIndex.value - 1);
+    } else if (touchDeltaX.value < -threshold && activeIndex.value < imageList.length - 1) {
+        // Swipe left -> next image
+        switchImage(activeIndex.value + 1);
+    }
+    
+    isSwiping.value = false;
+    touchDeltaX.value = 0;
 };
 
 // Scrollbar handling
@@ -299,16 +365,18 @@ onUnmounted(() => {
             }
             .MeMe-Item-Img {
                 display: inline-flex;
-                width: auto;
-                height: auto;
+                justify-content: center;
+                align-items: center;
+                width: 140px;
+                height: 140px;
                 border-radius: 10px;
                 overflow: hidden;
                 z-index: 1;
                 box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
                 img {
-                    width: 140px;
-                    height: auto;
-                    max-height: 140px;
+                    width: 100%;
+                    height: 100%;
+                    object-fit: contain;
                     z-index: 0;
                     transition: opacity 0.1s;
                 }
@@ -326,6 +394,7 @@ onUnmounted(() => {
     height: 100%;
     z-index: 9999;
     pointer-events: none; /* Let clicks pass through to mask if not on controls */
+    touch-action: pan-y; /* Allow vertical scroll but capture horizontal for swipe */
 }
 
 .lightbox-container > * {
@@ -362,32 +431,60 @@ onUnmounted(() => {
     cursor: grabbing;
 }
 
+/* Navigation buttons - 优化手机端可见性和触摸区域 */
 .nav-btn {
     position: fixed;
     top: 50%;
     transform: translateY(-50%);
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.5);
     border: none;
     color: white;
     font-size: 2rem;
-    width: 50px;
-    height: 50px;
+    width: 56px;
+    height: 56px;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 0;
     cursor: pointer;
     z-index: 20;
-    transition: background 0.2s;
+    transition: background 0.2s, transform 0.2s;
     border-radius: 50%;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    /* 增加点击区域 */
+    -webkit-tap-highlight-color: transparent;
+}
+
+.nav-btn::before {
+    content: '';
+    position: absolute;
+    top: -12px;
+    left: -12px;
+    right: -12px;
+    bottom: -12px;
 }
 
 .nav-btn:hover {
-    background: rgba(255, 255, 255, 0.3);
+    background: rgba(0, 0, 0, 0.7);
 }
 
-.nav-btn.prev { left: 20px; }
-.nav-btn.next { right: 20px; }
+.nav-btn:active {
+    transform: translateY(-50%) scale(0.95);
+}
+
+.nav-btn.prev { left: 12px; }
+.nav-btn.next { right: 12px; }
+
+/* 手机端导航按钮更大更明显 */
+@media (max-width: 768px) {
+    .nav-btn {
+        width: 48px;
+        height: 48px;
+        background: rgba(0, 0, 0, 0.6);
+    }
+    .nav-btn.prev { left: 8px; }
+    .nav-btn.next { right: 8px; }
+}
 
 .lightbox-toolbar {
     position: fixed;
@@ -420,5 +517,19 @@ onUnmounted(() => {
 
 .lightbox-toolbar button:hover {
     background: rgba(255, 255, 255, 0.2);
+}
+
+/* 手机端工具栏优化 */
+@media (max-width: 768px) {
+    .lightbox-toolbar {
+        bottom: 20px;
+        padding: 8px 16px;
+        gap: 6px;
+    }
+    .lightbox-toolbar button {
+        width: 36px;
+        height: 36px;
+        font-size: 1rem;
+    }
 }
 </style>

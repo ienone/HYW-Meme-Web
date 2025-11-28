@@ -9,4 +9,14 @@ export default defineConfig({
       vue(),
       tailwindcss(),
   ],
+  build: {
+    // Set chunk size warning limit
+    chunkSizeWarningLimit: 500,
+    // Enable CSS code splitting
+    cssCodeSplit: true,
+    // Disable source maps for production
+    sourcemap: false,
+    // Optimize asset inlining threshold
+    assetsInlineLimit: 4096
+  }
 })
